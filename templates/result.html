@@ -1,0 +1,119 @@
+{% extends "base.html" %}
+
+{% block title %}Enhancement Results{% endblock %}
+
+{% block content %}
+<div class="row justify-content-center">
+    <div class="col-lg-10">
+        <div class="card">
+            <div class="card-header">
+                <h2 class="mb-0"><i class="fas fa-check-circle me-2"></i>Enhancement Complete</h2>
+            </div>
+            <div class="card-body">
+                <div class="alert alert-success mb-4">
+                    <i class="fas fa-thumbs-up me-2"></i>
+                    Your image has been successfully enhanced with our advanced neural pipeline! Processing time: {{ processing_time }}
+                </div>
+                
+                <div class="compare-container">
+                    <div class="compare-image">
+                        <h5 class="image-label">Original</h5>
+                        <img src="{{ url_for('uploaded_file', filename=original) }}" alt="Original Image" class="img-fluid">
+                    </div>
+                    <div class="compare-image">
+                        <h5 class="image-label">Enhanced</h5>
+                        <img src="{{ url_for('result_file', filename=filename) }}" alt="Enhanced Image" class="img-fluid">
+                    </div>
+                </div>
+                
+                <div class="row mt-4">
+                    <div class="col-md-6">
+                        <a href="{{ url_for('download_file', filename=filename) }}" class="btn btn-success btn-lg w-100">
+                            <i class="fas fa-download me-2"></i>Download Enhanced Image
+                        </a>
+                    </div>
+                    <div class="col-md-6">
+                        <a href="{{ url_for('index') }}" class="btn btn-primary btn-lg w-100">
+                            <i class="fas fa-image me-2"></i>Enhance Another Image
+                        </a>
+                    </div>
+                </div>
+            </div>
+        </div>
+        
+        <div class="card mt-4">
+            <div class="card-header">
+                <h3 class="mb-0"><i class="fas fa-star me-2"></i>Applied Neural Enhancements</h3>
+            </div>
+            <div class="card-body">
+                <div class="row">
+                    <div class="col-md-6">
+                        <ul class="list-group list-group-flush mb-3">
+                            <li class="list-group-item">
+                                <i class="fas fa-check-circle text-success me-2"></i>
+                                <strong>Adaptive Detail Enhancement</strong>
+                                <p class="small text-muted mb-0">Edge-aware processing to enhance details while preserving smooth areas</p>
+                            </li>
+                            <li class="list-group-item">
+                                <i class="fas fa-check-circle text-success me-2"></i>
+                                <strong>Frequency Domain Processing</strong>
+                                <p class="small text-muted mb-0">Advanced frequency manipulation for optimal texture enhancement</p>
+                            </li>
+                            <li class="list-group-item">
+                                <i class="fas fa-check-circle text-success me-2"></i>
+                                <strong>Color Science Processing</strong>
+                                <p class="small text-muted mb-0">Professional color grading optimized for your image type</p>
+                            </li>
+                        </ul>
+                    </div>
+                    <div class="col-md-6">
+                        <ul class="list-group list-group-flush mb-3">
+                            <li class="list-group-item">
+                                <i class="fas fa-check-circle text-success me-2"></i>
+                                <strong>Neural Denoising</strong>
+                                <p class="small text-muted mb-0">AI-powered noise reduction that preserves important details</p>
+                            </li>
+                            <li class="list-group-item">
+                                <i class="fas fa-check-circle text-success me-2"></i>
+                                <strong>Smart Object Enhancement</strong>
+                                <p class="small text-muted mb-0">Content-aware processing for specific elements in your image</p>
+                            </li>
+                            <li class="list-group-item">
+                                <i class="fas fa-check-circle text-success me-2"></i>
+                                <strong>Type-Specific Optimization</strong>
+                                <p class="small text-muted mb-0">Parameters fine-tuned for your specific image category</p>
+                            </li>
+                        </ul>
+                    </div>
+                </div>
+            </div>
+        </div>
+        
+        <div class="card mt-4">
+            <div class="card-header">
+                <h3 class="mb-0"><i class="fas fa-share-alt me-2"></i>Share Your Enhanced Image</h3>
+            </div>
+            <div class="card-body">
+                <div class="d-flex justify-content-center gap-3 mb-3">
+                    <a href="https://www.facebook.com/sharer/sharer.php?u={{ url_for('result_file', filename=filename, _external=True) }}" target="_blank" class="btn btn-outline-primary">
+                        <i class="fab fa-facebook-f me-2"></i>Facebook
+                    </a>
+                    <a href="https://twitter.com/intent/tweet?url={{ url_for('result_file', filename=filename, _external=True) }}&text=Check out my enhanced image using Neural Image Enhancer!" target="_blank" class="btn btn-outline-info">
+                        <i class="fab fa-twitter me-2"></i>Twitter
+                    </a>
+                    <a href="https://pinterest.com/pin/create/button/?url={{ url_for('result_file', filename=filename, _external=True) }}&media={{ url_for('result_file', filename=filename, _external=True) }}&description=Enhanced with advanced AI technology" target="_blank" class="btn btn-outline-danger">
+                        <i class="fab fa-pinterest me-2"></i>Pinterest
+                    </a>
+                </div>
+                
+                <div class="mt-3 text-center">
+                    <p class="text-muted">
+                        <i class="fas fa-heart text-danger me-1"></i>
+                        Loving the results? Tell your friends about Neural Image Enhancer!
+                    </p>
+                </div>
+            </div>
+        </div>
+    </div>
+</div>
+{% endblock %}

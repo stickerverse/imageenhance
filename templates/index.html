@@ -1,0 +1,117 @@
+{% extends "base.html" %}
+
+{% block title %}Neural Image Enhancer - AI-Powered Photo Enhancement{% endblock %}
+
+{% block content %}
+<div class="row justify-content-center">
+    <div class="col-lg-8">
+        <div class="card">
+            <div class="card-header">
+                <h2 class="mb-0"><i class="fas fa-wand-magic-sparkles me-2"></i>Enhance Your Images</h2>
+            </div>
+            <div class="card-body">
+                <div class="text-center mb-4">
+                    <h4>Transform your photos with advanced AI technology</h4>
+                    <p class="text-muted">Upload an image to get started</p>
+                </div>
+                
+                <form action="{{ url_for('upload_file') }}" method="post" enctype="multipart/form-data" id="uploadForm">
+                    <div class="upload-area" id="uploadArea">
+                        <div class="upload-icon">
+                            <i class="fas fa-cloud-upload-alt"></i>
+                        </div>
+                        <h4>Drag & Drop or Click to Upload</h4>
+                        <p class="text-muted">Supports JPG, PNG, WEBP (Max 16MB)</p>
+                        <input type="file" name="file" id="fileInput" accept=".jpg,.jpeg,.png,.webp" class="d-none">
+                    </div>
+                    
+                    <div class="d-grid gap-2">
+                        <button type="submit" class="btn btn-primary btn-lg">
+                            <i class="fas fa-upload me-2"></i>Upload & Enhance
+                        </button>
+                    </div>
+                </form>
+            </div>
+        </div>
+        
+        <div class="card">
+            <div class="card-header">
+                <h3 class="mb-0"><i class="fas fa-info-circle me-2"></i>About</h3>
+            </div>
+            <div class="card-body">
+                <p>The Neural Image Enhancer uses state-of-the-art AI technology to transform your photos. Our advanced neural network can:</p>
+                
+                <div class="row">
+                    <div class="col-md-6">
+                        <ul class="list-group list-group-flush mb-4">
+                            <li class="list-group-item"><i class="fas fa-check-circle text-success me-2"></i>Enhance image details</li>
+                            <li class="list-group-item"><i class="fas fa-check-circle text-success me-2"></i>Improve colors and contrast</li>
+                            <li class="list-group-item"><i class="fas fa-check-circle text-success me-2"></i>Reduce noise and artifacts</li>
+                            <li class="list-group-item"><i class="fas fa-check-circle text-success me-2"></i>Sharpen blurry images</li>
+                        </ul>
+                    </div>
+                    <div class="col-md-6">
+                        <ul class="list-group list-group-flush mb-4">
+                            <li class="list-group-item"><i class="fas fa-check-circle text-success me-2"></i>Optimize for specific image types</li>
+                            <li class="list-group-item"><i class="fas fa-check-circle text-success me-2"></i>Apply professional color grading</li>
+                            <li class="list-group-item"><i class="fas fa-check-circle text-success me-2"></i>Smart object enhancement</li>
+                            <li class="list-group-item"><i class="fas fa-check-circle text-success me-2"></i>Frequency domain processing</li>
+                        </ul>
+                    </div>
+                </div>
+                
+                <div class="alert alert-info">
+                    <i class="fas fa-lightbulb me-2"></i>
+                    <strong>Tip:</strong> For best results, select the appropriate image type during the enhancement process.
+                </div>
+            </div>
+        </div>
+    </div>
+</div>
+{% endblock %}
+
+{% block scripts %}
+<script>
+    document.addEventListener('DOMContentLoaded', function() {
+        const uploadArea = document.getElementById('uploadArea');
+        const fileInput = document.getElementById('fileInput');
+        const uploadForm = document.getElementById('uploadForm');
+        
+        // Click on upload area to trigger file input
+        uploadArea.addEventListener('click', function() {
+            fileInput.click();
+        });
+        
+        // Handle drag and drop
+        uploadArea.addEventListener('dragover', function(e) {
+            e.preventDefault();
+            uploadArea.classList.add('border-primary');
+        });
+        
+        uploadArea.addEventListener('dragleave', function() {
+            uploadArea.classList.remove('border-primary');
+        });
+        
+        uploadArea.addEventListener('drop', function(e) {
+            e.preventDefault();
+            uploadArea.classList.remove('border-primary');
+            
+            if (e.dataTransfer.files.length) {
+                fileInput.files = e.dataTransfer.files;
+                
+                // Auto-submit form when file is dropped
+                uploadForm.submit();
+                document.getElementById('loadingOverlay').classList.remove('d-none');
+            }
+        });
+        
+        // Auto-submit when file is selected
+        fileInput.addEventListener('change', function() {
+            if (fileInput.files.length) {
+                uploadForm.submit();
+                document.getElementById('loadingOverlay').classList.remove('d-none');
+            }
+        });
+    });
+</script>
+{% endblock %}

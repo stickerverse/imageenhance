@@ -1,0 +1,24 @@
+services:
+  - type: web
+    name: neural-image-enhancer
+    env: docker
+    plan: standard # Upgraded to standard for better performance with neural networks
+    dockerfilePath: ./Dockerfile
+    envVars:
+      - key: SECRET_KEY
+        generateValue: true
+      - key: PORT
+        value: 8080
+    disk:
+      name: data
+      mountPath: /app/data
+      sizeGB: 5 # Increased disk size for model storage and image files
+    autoDeploy: true
+    healthCheckPath: /
+    buildFilter:
+      paths:
+        - app.py
+        - neural_enhancement_pipeline.py
+        - requirements.txt
+        - templates/**
+        - Dockerfile
