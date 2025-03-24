@@ -77,6 +77,74 @@ class NeuralEnhancementPipeline:
             
         except Exception as e:
             logger.error(f"Error initializing neural networks: {str(e)}")
+
+    def _create_depth_estimation_network(self):
+    """Create a depth estimation network architecture"""
+    class DepthEstimationNetwork(nn.Module):
+        """Network for monocular depth estimation"""
+        def __init__(self, in_channels=3):
+            super(DepthEstimationNetwork, self).__init__()
+            
+            # Encoder - using ResNet-like blocks
+            self.enc1 = self._resblock(in_channels, 64, stride=2)
+            self.enc2 = self._resblock(64, 128, stride=2)
+            self.enc3 = self._resblock(128, 256, stride=2)
+            self.enc4 = self._resblock(256, 512, stride=2)
+            self.enc5 = self._resblock(512, 512, stride=2)
+            
+            # Decoder
+            self.dec5 = self._upblock(512, 512)
+            self.dec4 = self._upblock(1024, 256)  # 1024 = 512 + 512 (skip)
+            self.dec3 = self._upblock(512, 128)   # 512 = 256 + 256 (skip)
+            self.dec2 = self._upblock(256, 64)    # 256 = 128 + 128 (skip)
+            self.dec1 = self._upblock(128, 32)    # 128 = 64 + 64 (skip)
+            
+            # Final layer - depth prediction
+            self.final = nn.Sequential(
+                nn.Conv2d(32, 1, 3, padding=1),
+                nn.ReLU()  # Depth is always positive
+            )
+            
+        def _resblock(self, in_channels, out_channels, stride=1):
+            return nn.Sequential(
+                nn.Conv2d(in_channels, out_channels, 3, stride=stride, padding=1),
+                nn.BatchNorm2d(out_channels),
+                nn.ReLU(inplace=True),
+                nn.Conv2d(out_channels, out_channels, 3, padding=1),
+                nn.BatchNorm2d(out_channels),
+                nn.ReLU(inplace=True)
+            )
+            
+        def _upblock(self, in_channels, out_channels):
+            return nn.Sequential(
+                nn.Upsample(scale_factor=2, mode='bilinear', align_corners=True),
+                nn.Conv2d(in_channels, out_channels, 3, padding=1),
+                nn.BatchNorm2d(out_channels),
+                nn.ReLU(inplace=True)
+            )
+            
+        def forward(self, x):
+            # Encoder
+            e1 = self.enc1(x)
+            e2 = self.enc2(e1)
+            e3 = self.enc3(e2)
+            e4 = self.enc4(e3)
+            e5 = self.enc5(e4)
+            
+            # Decoder with skip connections
+            d5 = self.dec5(e5)
+            d4 = self.dec4(torch.cat([d5, e4], dim=1))
+            d3 = self.dec3(torch.cat([d4, e3], dim=1))
+            d2 = self.dec2(torch.cat([d3, e2], dim=1))
+            d1 = self.dec1(torch.cat([d2, e1], dim=1))
+            
+            # Final depth prediction
+            depth = self.final(d1)
+            return depth
+    
+    # Create network and move to device
+    model = DepthEstimationNetwork().to(self.device)
+    return model
     
     def _create_super_resolution_network(self):
         """Create a super-resolution network architecture"""
