@@ -77,74 +77,6 @@ class NeuralEnhancementPipeline:
             
         except Exception as e:
             logger.error(f"Error initializing neural networks: {str(e)}")
-
-    def _create_depth_estimation_network(self):
-    """Create a depth estimation network architecture"""
-    class DepthEstimationNetwork(nn.Module):
-        """Network for monocular depth estimation"""
-        def __init__(self, in_channels=3):
-            super(DepthEstimationNetwork, self).__init__()
-            
-            # Encoder - using ResNet-like blocks
-            self.enc1 = self._resblock(in_channels, 64, stride=2)
-            self.enc2 = self._resblock(64, 128, stride=2)
-            self.enc3 = self._resblock(128, 256, stride=2)
-            self.enc4 = self._resblock(256, 512, stride=2)
-            self.enc5 = self._resblock(512, 512, stride=2)
-            
-            # Decoder
-            self.dec5 = self._upblock(512, 512)
-            self.dec4 = self._upblock(1024, 256)  # 1024 = 512 + 512 (skip)
-            self.dec3 = self._upblock(512, 128)   # 512 = 256 + 256 (skip)
-            self.dec2 = self._upblock(256, 64)    # 256 = 128 + 128 (skip)
-            self.dec1 = self._upblock(128, 32)    # 128 = 64 + 64 (skip)
-            
-            # Final layer - depth prediction
-            self.final = nn.Sequential(
-                nn.Conv2d(32, 1, 3, padding=1),
-                nn.ReLU()  # Depth is always positive
-            )
-            
-        def _resblock(self, in_channels, out_channels, stride=1):
-            return nn.Sequential(
-                nn.Conv2d(in_channels, out_channels, 3, stride=stride, padding=1),
-                nn.BatchNorm2d(out_channels),
-                nn.ReLU(inplace=True),
-                nn.Conv2d(out_channels, out_channels, 3, padding=1),
-                nn.BatchNorm2d(out_channels),
-                nn.ReLU(inplace=True)
-            )
-            
-        def _upblock(self, in_channels, out_channels):
-            return nn.Sequential(
-                nn.Upsample(scale_factor=2, mode='bilinear', align_corners=True),
-                nn.Conv2d(in_channels, out_channels, 3, padding=1),
-                nn.BatchNorm2d(out_channels),
-                nn.ReLU(inplace=True)
-            )
-            
-        def forward(self, x):
-            # Encoder
-            e1 = self.enc1(x)
-            e2 = self.enc2(e1)
-            e3 = self.enc3(e2)
-            e4 = self.enc4(e3)
-            e5 = self.enc5(e4)
-            
-            # Decoder with skip connections
-            d5 = self.dec5(e5)
-            d4 = self.dec4(torch.cat([d5, e4], dim=1))
-            d3 = self.dec3(torch.cat([d4, e3], dim=1))
-            d2 = self.dec2(torch.cat([d3, e2], dim=1))
-            d1 = self.dec1(torch.cat([d2, e1], dim=1))
-            
-            # Final depth prediction
-            depth = self.final(d1)
-            return depth
-    
-    # Create network and move to device
-    model = DepthEstimationNetwork().to(self.device)
-    return model
     
     def _create_super_resolution_network(self):
         """Create a super-resolution network architecture"""
@@ -395,3 +327,345 @@ class NeuralEnhancementPipeline:
         # Create network and move to device
         model = UNetSegmentation().to(self.device)
         return model
+        
+    def _create_depth_estimation_network(self):
+        """Create a depth estimation network architecture"""
+        class DepthEstimationNetwork(nn.Module):
+            """Encoder-decoder network for monocular depth estimation"""
+            def __init__(self, in_channels=3):
+                super(DepthEstimationNetwork, self).__init__()
+                
+                # Encoder (ResNet-like)
+                self.enc1 = nn.Sequential(
+                    nn.Conv2d(in_channels, 64, 7, stride=2, padding=3),
+                    nn.BatchNorm2d(64),
+                    nn.ReLU(inplace=True)
+                )
+                self.enc2 = self._make_layer(64, 64, 3, stride=1)
+                self.enc3 = self._make_layer(64, 128, 4, stride=2)
+                self.enc4 = self._make_layer(128, 256, 6, stride=2)
+                self.enc5 = self._make_layer(256, 512, 3, stride=2)
+                
+                # Decoder
+                self.dec5 = nn.Sequential(
+                    nn.Conv2d(512, 256, 3, padding=1),
+                    nn.BatchNorm2d(256),
+                    nn.ReLU(inplace=True),
+                    nn.Upsample(scale_factor=2, mode='bilinear', align_corners=True)
+                )
+                self.dec4 = nn.Sequential(
+                    nn.Conv2d(512, 128, 3, padding=1),  # 512 = 256 + 256 (skip)
+                    nn.BatchNorm2d(128),
+                    nn.ReLU(inplace=True),
+                    nn.Upsample(scale_factor=2, mode='bilinear', align_corners=True)
+                )
+                self.dec3 = nn.Sequential(
+                    nn.Conv2d(256, 64, 3, padding=1),  # 256 = 128 + 128 (skip)
+                    nn.BatchNorm2d(64),
+                    nn.ReLU(inplace=True),
+                    nn.Upsample(scale_factor=2, mode='bilinear', align_corners=True)
+                )
+                self.dec2 = nn.Sequential(
+                    nn.Conv2d(128, 32, 3, padding=1),  # 128 = 64 + 64 (skip)
+                    nn.BatchNorm2d(32),
+                    nn.ReLU(inplace=True),
+                    nn.Upsample(scale_factor=2, mode='bilinear', align_corners=True)
+                )
+                
+                # Final output layer (sigmoid for depth in range [0,1])
+                self.final = nn.Sequential(
+                    nn.Conv2d(96, 1, 3, padding=1),  # 96 = 32 + 64 (skip)
+                    nn.Sigmoid()
+                )
+                
+            def _make_layer(self, in_channels, out_channels, blocks, stride=1):
+                layers = []
+                
+                # First block with potential stride
+                layers.append(self._residual_block(in_channels, out_channels, stride))
+                
+                # Remaining blocks
+                for _ in range(1, blocks):
+                    layers.append(self._residual_block(out_channels, out_channels))
+                    
+                return nn.Sequential(*layers)
+                
+            def _residual_block(self, in_channels, out_channels, stride=1):
+                shortcut = nn.Sequential()
+                
+                # Handle dimension change with 1x1 conv
+                if stride != 1 or in_channels != out_channels:
+                    shortcut = nn.Sequential(
+                        nn.Conv2d(in_channels, out_channels, 1, stride=stride),
+                        nn.BatchNorm2d(out_channels)
+                    )
+                    
+                return nn.Sequential(
+                    nn.Conv2d(in_channels, out_channels, 3, stride=stride, padding=1),
+                    nn.BatchNorm2d(out_channels),
+                    nn.ReLU(inplace=True),
+                    nn.Conv2d(out_channels, out_channels, 3, padding=1),
+                    nn.BatchNorm2d(out_channels),
+                    nn.ReLU(inplace=True),
+                    shortcut
+                )
+                
+            def forward(self, x):
+                # Encoder
+                e1 = self.enc1(x)  # 1/2 scale
+                e2 = self.enc2(e1)  # 1/2 scale
+                e3 = self.enc3(e2)  # 1/4 scale
+                e4 = self.enc4(e3)  # 1/8 scale
+                e5 = self.enc5(e4)  # 1/16 scale
+                
+                # Decoder with skip connections
+                d5 = self.dec5(e5)  # 1/8 scale
+                d4 = self.dec4(torch.cat([d5, e4], dim=1))  # 1/4 scale
+                d3 = self.dec3(torch.cat([d4, e3], dim=1))  # 1/2 scale
+                d2 = self.dec2(torch.cat([d3, e2], dim=1))  # 1/1 scale
+                
+                # Final output
+                out = self.final(torch.cat([d2, e1], dim=1))
+                return out
+        
+        # Create network and move to device
+        model = DepthEstimationNetwork().to(self.device)
+        return model
+    
+    def _create_style_transfer_network(self):
+        """Create a style transfer network architecture"""
+        class StyleTransferNetwork(nn.Module):
+            """Adaptive style transfer network"""
+            def __init__(self):
+                super(StyleTransferNetwork, self).__init__()
+                
+                # Encoder layers (VGG-like)
+                self.enc1 = nn.Sequential(
+                    nn.Conv2d(3, 64, 3, padding=1),
+                    nn.ReLU(inplace=True),
+                    nn.Conv2d(64, 64, 3, padding=1),
+                    nn.ReLU(inplace=True),
+                    nn.MaxPool2d(2)
+                )
+                
+                self.enc2 = nn.Sequential(
+                    nn.Conv2d(64, 128, 3, padding=1),
+                    nn.ReLU(inplace=True),
+                    nn.Conv2d(128, 128, 3, padding=1),
+                    nn.ReLU(inplace=True),
+                    nn.MaxPool2d(2)
+                )
+                
+                self.enc3 = nn.Sequential(
+                    nn.Conv2d(128, 256, 3, padding=1),
+                    nn.ReLU(inplace=True),
+                    nn.Conv2d(256, 256, 3, padding=1),
+                    nn.ReLU(inplace=True),
+                    nn.Conv2d(256, 256, 3, padding=1),
+                    nn.ReLU(inplace=True),
+                    nn.MaxPool2d(2)
+                )
+                
+                self.enc4 = nn.Sequential(
+                    nn.Conv2d(256, 512, 3, padding=1),
+                    nn.ReLU(inplace=True),
+                    nn.Conv2d(512, 512, 3, padding=1),
+                    nn.ReLU(inplace=True),
+                    nn.Conv2d(512, 512, 3, padding=1),
+                    nn.ReLU(inplace=True)
+                )
+                
+                # Adaptive instance normalization
+                self.adain = AdaptiveInstanceNormalization()
+                
+                # Decoder layers
+                self.dec4 = nn.Sequential(
+                    nn.Conv2d(512, 256, 3, padding=1),
+                    nn.ReLU(inplace=True),
+                    nn.Upsample(scale_factor=2, mode='nearest')
+                )
+                
+                self.dec3 = nn.Sequential(
+                    nn.Conv2d(256, 128, 3, padding=1),
+                    nn.ReLU(inplace=True),
+                    nn.Upsample(scale_factor=2, mode='nearest')
+                )
+                
+                self.dec2 = nn.Sequential(
+                    nn.Conv2d(128, 64, 3, padding=1),
+                    nn.ReLU(inplace=True),
+                    nn.Upsample(scale_factor=2, mode='nearest')
+                )
+                
+                self.dec1 = nn.Sequential(
+                    nn.Conv2d(64, 3, 3, padding=1)
+                )
+                
+            def encode(self, x):
+                # Extract features
+                x = self.enc1(x)
+                x = self.enc2(x)
+                x = self.enc3(x)
+                x = self.enc4(x)
+                return x
+                
+            def decode(self, x):
+                # Generate image from features
+                x = self.dec4(x)
+                x = self.dec3(x)
+                x = self.dec2(x)
+                x = self.dec1(x)
+                return x
+                
+            def forward(self, content, style, alpha=1.0):
+                # Extract content and style features
+                content_feat = self.encode(content)
+                style_feat = self.encode(style)
+                
+                # Apply adaptive instance normalization
+                t = self.adain(content_feat, style_feat)
+                
+                # Apply style strength
+                t = alpha * t + (1 - alpha) * content_feat
+                
+                # Decode
+                out = self.decode(t)
+                return out
+                
+        class AdaptiveInstanceNormalization(nn.Module):
+            """AdaIN layer for style transfer"""
+            def __init__(self):
+                super(AdaptiveInstanceNormalization, self).__init__()
+                
+            def forward(self, content, style):
+                content_mean = torch.mean(content, dim=[2, 3], keepdim=True)
+                content_std = torch.std(content, dim=[2, 3], keepdim=True) + 1e-5
+                
+                style_mean = torch.mean(style, dim=[2, 3], keepdim=True)
+                style_std = torch.std(style, dim=[2, 3], keepdim=True) + 1e-5
+                
+                normalized = (content - content_mean) / content_std
+                return normalized * style_std + style_mean
+        
+        # Create network and move to device
+        model = StyleTransferNetwork().to(self.device)
+        return model
+        
+    def _load_pretrained_weights(self):
+        """Load pretrained weights for the networks if available"""
+        for name, network in self.networks.items():
+            model_path = self.model_dir / f"{name}_model.pth"
+            if model_path.exists():
+                try:
+                    logger.info(f"Loading pretrained weights for {name} network")
+                    state_dict = torch.load(model_path, map_location=self.device)
+                    network.load_state_dict(state_dict)
+                except Exception as e:
+                    logger.error(f"Error loading weights for {name}: {str(e)}")
+            else:
+                logger.warning(f"No pretrained weights found for {name} network")
+
+class FrequencyDomainProcessor:
+    """
+    Processor for frequency domain operations like denoising and detail enhancement
+    """
+    def __init__(self):
+        pass
+
+    def process(self, image):
+        """Apply frequency domain processing to the image"""
+        # Convert to grayscale for frequency analysis if needed
+        if len(image.shape) == 3:
+            gray = cv2.cvtColor(image, cv2.COLOR_RGB2GRAY)
+        else:
+            gray = image.copy()
+            
+        # Apply FFT
+        f = fftpack.fft2(gray)
+        fshift = fftpack.fftshift(f)
+        
+        # Create filters and apply processing in frequency domain
+        rows, cols = gray.shape
+        crow, ccol = rows // 2, cols // 2
+        
+        # Apply band-pass filter
+        mask = np.ones((rows, cols), np.uint8)
+        r_in = 30   # Inner radius for high-pass
+        r_out = 80  # Outer radius for low-pass
+        
+        center = [crow, ccol]
+        x, y = np.ogrid[:rows, :cols]
+        mask_area = (x - center[0])**2 + (y - center[1])**2
+        mask[mask_area < r_in**2] = 0
+        mask[mask_area > r_out**2] = 0
+        
+        # Apply mask and inverse FFT
+        fshift_filtered = fshift * mask
+        f_ishift = fftpack.ifftshift(fshift_filtered)
+        img_filtered = fftpack.ifft2(f_ishift)
+        img_filtered = np.abs(img_filtered)
+        
+        # Normalize back to 8-bit range
+        img_filtered = (img_filtered - np.min(img_filtered)) / (np.max(img_filtered) - np.min(img_filtered)) * 255
+        img_filtered = img_filtered.astype(np.uint8)
+        
+        # If original was color, merge back with color information
+        if len(image.shape) == 3:
+            # Convert to YUV, replace Y with filtered, then back to RGB
+            img_yuv = cv2.cvtColor(image, cv2.COLOR_RGB2YUV)
+            img_yuv[:,:,0] = img_filtered
+            return cv2.cvtColor(img_yuv, cv2.COLOR_YUV2RGB)
+        else:
+            return img_filtered
+
+class AdaptiveDetailEnhancer:
+    """
+    Processor for adaptive detail enhancement using edge-aware filters
+    """
+    def __init__(self):
+        pass
+        
+    def enhance(self, image, strength=1.5, edge_threshold=0.2):
+        """Enhance details in the image"""
+        # Convert to float for processing
+        img_float = image.astype(np.float32) / 255.0
+        
+        # Use guided filter for edge-aware smoothing
+        if len(image.shape) == 3:
+            # For color image
+            smoothed = np.zeros_like(img_float)
+            for c in range(3):
+                smoothed[:,:,c] = self._guided_filter(img_float[:,:,c], img_float[:,:,c], 5, 0.1)
+        else:
+            # For grayscale
+            smoothed = self._guided_filter(img_float, img_float, 5, 0.1)
+            
+        # Extract detail layer
+        detail = img_float - smoothed
+        
+        # Enhance details adaptively
+        edge_map = self._compute_edge_map(img_float)
+        
+        # Reduce enhancement in strong edge areas to prevent ringing
+        enhancement_mask = 1.0 - (edge_map > edge_threshold).astype(np.float32)
+        
+        # Apply adaptive enhancement
+        enhanced = img_float + detail * strength * enhancement_mask
+        
+        # Clip and convert back to 8-bit
+        enhanced = np.clip(enhanced, 0.0, 1.0)
+        return (enhanced * 255).astype(np.uint8)
+    
+    def _guided_filter(self, guide, input_img, radius, epsilon):
+        """Edge-preserving guided filter implementation"""
+        # Compute mean and correlation
+        mean_guide = cv2.boxFilter(guide, -1, (radius, radius))
+        mean_input = cv2.boxFilter(input_img, -1, (radius, radius))
+        mean_guide_input = cv2.boxFilter(guide * input_img, -1, (radius, radius))
+        
+        # Compute covariance and variance
+        cov_guide_input = mean_guide_input - mean_guide * mean_input
+        var_guide = cv2.boxFilter(guide * guide, -1, (radius, radius)) - mean_guide * mean_guide
+        
+        # Compute filter coefficients
+        a = cov_guide_input / (var_guide + epsilon)
